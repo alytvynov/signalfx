@@ -76,8 +76,8 @@ type metric struct {
 	Dimensions map[string]string `json:"dimensions"`
 }
 
-func buildBody(r metrics.Registry, config Config) map[string]metric {
-	vals := make(map[string]metric)
+func buildBody(r metrics.Registry, config Config) map[string][]metric {
+	vals := make(map[string][]metric)
 
 	r.Each(func(name string, i interface{}) {
 		if config.Prefix != "" {
@@ -85,25 +85,32 @@ func buildBody(r metrics.Registry, config Config) map[string]metric {
 		}
 		switch m := i.(type) {
 		case metrics.Counter:
-			vals["counter"] = metric{Metric: name, Value: float64(m.Count())}
+			vals["counter"] = append(vals["counter"],
+				metric{Metric: name, Value: float64(m.Count())})
 		case metrics.Gauge:
-			vals["gauge"] = metric{Metric: name, Value: float64(m.Value())}
+			vals["gauge"] = append(vals["gauge"],
+				metric{Metric: name, Value: float64(m.Value())})
 		case metrics.GaugeFloat64:
-			vals["gauge"] = metric{Metric: name, Value: m.Value()}
+			vals["gauge"] = append(vals["gauge"],
+				metric{Metric: name, Value: m.Value()})
 		case metrics.Histogram:
-			vals["gauge"] = metric{Metric: name, Value: m.Mean()}
+			vals["gauge"] = append(vals["gauge"],
+				metric{Metric: name, Value: m.Mean()})
 		case metrics.Meter:
-			vals["gauge"] = metric{Metric: name, Value: m.Rate1()}
+			vals["gauge"] = append(vals["gauge"],
+				metric{Metric: name, Value: m.Rate1()})
 		case metrics.Timer:
-			vals["gauge"] = metric{Metric: name, Value: m.Mean()}
+			vals["gauge"] = append(vals["gauge"],
+				metric{Metric: name, Value: m.Mean()})
 		}
 	})
 
 	// Add dimensions to each metric. Separate loop to unclutter the switch
 	// above.
-	for k, m := range vals {
-		m.Dimensions = config.Dimensions
-		vals[k] = m
+	for _, ms := range vals {
+		for i := range ms {
+			ms[i].Dimensions = config.Dimensions
+		}
 	}
 
 	return vals
