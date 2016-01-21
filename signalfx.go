@@ -11,14 +11,26 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
+// DefaultAddr is the default API gateway used if Config.Addr is empty.
 const DefaultAddr = "https://ingest.signalfx.com/v2/datapoint"
 
 type Config struct {
-	Addr   string
-	Token  string
+	// SignalFX API endpoint for datapoint ingestion. Can be left empty for
+	// default.
+	Addr string
+	// SignalFX API token.
+	Token string
+	// Prefix added to all metric names. Optional.
 	Prefix string
+	// Dimensions is a set of attributes added to each metric. It usually
+	// contains things such as hostname, app name, environment name.
+	Dimensions map[string]string
 }
 
+// SignalFX flushes values from registry every d interval.
+//
+// Note that this is does not spawn a worker goroutine to do the flushing. This
+// function blocks indefinitely. Normally you want to start it as a goroutine.
 func SignalFX(r metrics.Registry, d time.Duration, config Config) {
 	if config.Addr == "" {
 		config.Addr = DefaultAddr
@@ -31,7 +43,7 @@ func SignalFX(r metrics.Registry, d time.Duration, config Config) {
 }
 
 func send(r metrics.Registry, config Config) error {
-	vals := buildBody(r, config.Prefix)
+	vals := buildBody(r, config)
 	if len(vals) == 0 {
 		// nothing to send
 		return nil
@@ -59,15 +71,18 @@ func send(r metrics.Registry, config Config) error {
 }
 
 type metric struct {
-	Metric string  `json:"metric"`
-	Value  float64 `json:"value"`
+	Metric     string            `json:"metric"`
+	Value      float64           `json:"value"`
+	Dimensions map[string]string `json:"dimensions"`
 }
 
-func buildBody(r metrics.Registry, prefix string) map[string]metric {
+func buildBody(r metrics.Registry, config Config) map[string]metric {
 	vals := make(map[string]metric)
 
 	r.Each(func(name string, i interface{}) {
-		name = prefix + "." + name
+		if config.Prefix != "" {
+			name = config.Prefix + "." + name
+		}
 		switch m := i.(type) {
 		case metrics.Counter:
 			vals["counter"] = metric{Metric: name, Value: float64(m.Count())}
@@ -83,6 +98,13 @@ func buildBody(r metrics.Registry, prefix string) map[string]metric {
 			vals["gauge"] = metric{Metric: name, Value: m.Mean()}
 		}
 	})
+
+	// Add dimensions to each metric. Separate loop to unclutter the switch
+	// above.
+	for k, m := range vals {
+		m.Dimensions = config.Dimensions
+		vals[k] = m
+	}
 
 	return vals
 }
