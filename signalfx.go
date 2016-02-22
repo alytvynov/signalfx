@@ -99,6 +99,8 @@ func buildBody(r metrics.Registry, config Config) map[string][]metric {
 		case metrics.Meter:
 			vals["gauge"] = append(vals["gauge"],
 				metric{Metric: name, Value: m.Rate1()})
+			vals["counter"] = append(vals["counter"],
+				metric{Metric: name + ".count", Value: float64(m.Count())})
 		case metrics.Timer:
 			vals["gauge"] = append(vals["gauge"],
 				metric{Metric: name, Value: m.Mean()})
